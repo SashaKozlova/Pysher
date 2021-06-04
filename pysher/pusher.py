@@ -173,7 +173,7 @@ class Pusher(object):
         return auth_key
 
     def _build_url(self, secure=True, port=None, custom_host=None):
-        path = "/app/{}?client={}&version={}&protocol={}".format(
+        path = "/ws/app/{}?client={}&version={}&protocol={}".format(
             self.key, self.client_id, VERSION, self.protocol
         )
 

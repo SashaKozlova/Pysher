@@ -4,13 +4,32 @@ import hashlib
 import hmac
 import logging
 import json
+import requests
+import login_get_token
 
 VERSION = '0.6.0'
+CHANNEL_ID = None
 
+
+def get_access_token(url, payload):
+    global CHANNEL_ID
+    headers = {"Accept": "application/json"}
+    token_response = requests.post(url=url, headers=headers, json=payload)
+    text = token_response.json()
+    access_token = "Bearer " + text['access_token']
+    CHANNEL_ID = text['user']['id']
+
+    return access_token
+
+
+def logout(url, access_token):
+    headers = {"Accept": "application/json", 'Authorization': access_token}
+    response = requests.post(url=url, headers=headers)
+    print("Logout: " + response.text)
 
 class Pusher(object):
     host = "ws.pusherapp.com"
-    client_id = "Pysher"
+    client_id = "app"
     protocol = 6
 
     def __init__(self, key, cluster="", secure=True, secret="", user_data=None, log_level=logging.INFO,
@@ -49,6 +68,7 @@ class Pusher(object):
 
         self.channels = {}
         self.url = self._build_url(secure, port, custom_host)
+        self.auth_token = None
 
         if auto_sub:
             reconnect_handler = self._reconnect_handler
@@ -84,7 +104,7 @@ class Pusher(object):
         self.connection.disconnect(timeout)
         self.channels = {}
 
-    def subscribe(self, channel_name, auth=None):
+    def subscribe(self, channel_name, auth=None, authEndpoint=None, url_token=None, payload=None):
         """Subscribe to a channel.
 
         :param str channel_name: The name of the channel to subscribe to.
@@ -97,7 +117,9 @@ class Pusher(object):
                 data['auth'] = self._generate_presence_token(channel_name)
                 data['channel_data'] = json.dumps(self.user_data)
             elif channel_name.startswith('private-'):
-                data['auth'] = self._generate_auth_token(channel_name)
+                data['auth'] = self._generate_auth_token(channel_name, authEndpoint=authEndpoint, url_token=url_token,
+                                                         payload=payload)
+                data['channel'] = "{}{}".format(channel_name, CHANNEL_ID)
         else:
             data['auth'] = auth
 
@@ -148,15 +170,38 @@ class Pusher(object):
 
             self.connection.send_event('pusher:subscribe', data)
 
-    def _generate_auth_token(self, channel_name):
+#    def _generate_auth_token(self, channel_name):
+#        """Generate a token for authentication with the given channel.
+#
+#        :param str channel_name: Name of the channel to generate a signature for.
+#        :rtype: str
+#        """
+#        subject = "{}:{}".format(self.connection.socket_id, channel_name)
+#        h = hmac.new(self.secret_as_bytes, subject.encode('utf-8'), hashlib.sha256)
+#        auth_key = "{}:{}".format(self.key, h.hexdigest())
+#        print(auth_key)
+#
+#        return auth_key
+
+    def _generate_auth_token(self, channel_name, authEndpoint, url_token, payload):
         """Generate a token for authentication with the given channel.
 
         :param str channel_name: Name of the channel to generate a signature for.
+        :param str authEndpoint: url auth enpoint
         :rtype: str
         """
-        subject = "{}:{}".format(self.connection.socket_id, channel_name)
-        h = hmac.new(self.secret_as_bytes, subject.encode('utf-8'), hashlib.sha256)
-        auth_key = "{}:{}".format(self.key, h.hexdigest())
+        self.auth_token = get_access_token(url=url_token, payload=payload)
+        print('auth_token: ' + self.auth_token)
+
+        headers = {'Accept': 'application/json', 'Authorization': self.auth_token}
+        channel_name = "{}{}".format(channel_name, CHANNEL_ID)
+        socket_id = self.connection.socket_id
+        form_data = {'socket_id': socket_id, 'channel_name': channel_name}
+
+        auth_response = requests.post(url=authEndpoint, headers=headers, json=form_data)
+        auth_key_data = auth_response.json()
+        auth_key = auth_key_data['auth']
+        print(auth_key)
 
         return auth_key
 
@@ -182,5 +227,5 @@ class Pusher(object):
         host = custom_host or self.host
         if not port:
             port = 443 if secure else 80
-
+        print("Connection url: {}://{}:{}{}".format(proto, host, port, path))
         return "{}://{}:{}{}".format(proto, host, port, path)

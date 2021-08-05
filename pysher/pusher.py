@@ -27,6 +27,7 @@ def logout(url, access_token):
     response = requests.post(url=url, headers=headers)
     print("Logout: " + response.text)
 
+
 class Pusher(object):
     host = "ws.pusherapp.com"
     client_id = "app"
@@ -187,7 +188,9 @@ class Pusher(object):
         """Generate a token for authentication with the given channel.
 
         :param str channel_name: Name of the channel to generate a signature for.
-        :param str authEndpoint: url auth enpoint
+        :param str authEndpoint: url auth endpoint
+        :param str url_token: url for request to get token
+        :param str payload: login and password in json
         :rtype: str
         """
         self.auth_token = get_access_token(url=url_token, payload=payload)
@@ -218,7 +221,7 @@ class Pusher(object):
         return auth_key
 
     def _build_url(self, secure=True, port=None, custom_host=None):
-        path = "/ws/app/{}?client={}&version={}&protocol={}".format(
+        path = "/app/{}?client={}&version={}&protocol={}".format(
             self.key, self.client_id, VERSION, self.protocol
         )
 
